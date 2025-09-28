@@ -3,7 +3,8 @@ import numpy as np
 import time
 
 def jacobi_serial(nx, ny, max_iter, tolerance):
-    u = np.zeros((ny + 2, nx + 2), dtype=np.float64)
+    #u = np.zeros((ny + 2, nx + 2), dtype=np.float64)
+    u = 5*np.ones((ny + 2, nx + 2), dtype=np.float64)
     u_new = np.zeros((ny + 2, nx + 2), dtype=np.float64)
     
     u[0, :] = 0.0
@@ -11,7 +12,7 @@ def jacobi_serial(nx, ny, max_iter, tolerance):
     u[:, 0] = 0.0
     u[:, -1] = 0.0
     
-    u_new[:, :] = u[:, :]
+    #u_new[:, :] = u[:, :]
     
     dx = 1.0 / (nx + 1)
     dy = 1.0 / (ny + 1)
@@ -20,8 +21,8 @@ def jacobi_serial(nx, ny, max_iter, tolerance):
     x = np.linspace(0, 1, nx + 2)
     y = np.linspace(0, 1, ny + 2)
     X, Y = np.meshgrid(x, y, indexing='xy')
-    f = -1.0*np.sin(np.pi * X) * np.sin(np.pi * Y)
-
+    f = np.sin(4*np.pi * X) * np.sin(4*np.pi * Y)
+    #u_analitica = (1/(32*np.pi**2)) * np.sin(np.pi * X) * np.sin(np.pi * Y) 
     for iteration in range(max_iter):
         max_diff = 0.0
         
@@ -29,14 +30,14 @@ def jacobi_serial(nx, ny, max_iter, tolerance):
             for i in range(1, nx + 1):
                 u_new[j, i] = alpha * (
                     (u[j, i + 1] + u[j, i - 1]) / (dx**2) +
-                    (u[j + 1, i] + u[j - 1, i]) / (dy**2) - f[j, i]
+                    (u[j + 1, i] + u[j - 1, i]) / (dy**2) + f[j, i]
                 )
                 
                 diff = abs(u_new[j, i] - u[j, i])
                 if diff > max_diff:
                     max_diff = diff
         #max_diff_rel = max_diff/np.max(abs(u_new))
-        
+        print(f"it={iteration+1} - erro máximo={max_diff}") 
         #if max_diff_rel < tolerance:
         if max_diff < tolerance:
             print(f"Convergência atingida na iteração {iteration + 1}")
@@ -46,7 +47,7 @@ def jacobi_serial(nx, ny, max_iter, tolerance):
             print(f"Limite de iterações atingido: {iteration + 1}")
             print(f"Erro máximo: {max_diff}")
    
-        u[1:-1, 1:-1] = u_new[1:-1, 1:-1]
+        u[1:-1, 1:-1] = u_new[1:-1, 1:-1].copy()
  
     return u[1:-1, 1:-1], iteration + 1
 
@@ -90,9 +91,10 @@ def jacobi_parallel(nx, ny, max_iter, tolerance):
     left_neighbor, right_neighbor = cart_comm.Shift(0, 1)
     top_neighbor, bottom_neighbor = cart_comm.Shift(1, 1)
     
-    u_local = np.zeros((ny_local + 2, nx_local + 2), dtype=np.float64)
+    #u_local     = np.zeros((ny_local + 2, nx_local + 2), dtype=np.float64)
+    u_local     = 5*np.ones((ny_local + 2, nx_local + 2), dtype=np.float64)
     u_new_local = np.zeros((ny_local + 2, nx_local + 2), dtype=np.float64)
-    
+     
     dx = 1.0 / (nx + 1)
     dy = 1.0 / (ny + 1)
     alpha = dx**2 * dy**2 / (2 * (dx**2 + dy**2))
@@ -104,7 +106,8 @@ def jacobi_parallel(nx, ny, max_iter, tolerance):
     y_local = y_global[start_y + 1:end_y + 1]
     
     X_local, Y_local = np.meshgrid(x_local, y_local, indexing='xy')
-    f_local = -1.0*np.sin(np.pi * X_local) * np.sin(np.pi * Y_local)
+    f_local = np.sin(4*np.pi * X_local) * np.sin(4*np.pi * Y_local)
+    #u_analitica = (1/(32*np.pi**2)) * np.sin(np.pi * X) * np.sin(np.pi * Y)
 
     for iteration in range(max_iter):
         requests = []
@@ -158,7 +161,7 @@ def jacobi_parallel(nx, ny, max_iter, tolerance):
             for i in range(1, nx_local + 1):
                 u_new_local[j, i] = alpha * (
                     (u_local[j, i + 1] + u_local[j, i - 1]) / (dx**2) +
-                    (u_local[j + 1, i] + u_local[j - 1, i]) / (dy**2) - f_local[j-1, i-1]
+                    (u_local[j + 1, i] + u_local[j - 1, i]) / (dy**2) + f_local[j-1, i-1]
                 )
                 
                 diff = abs(u_new_local[j, i] - u_local[j, i])
@@ -166,7 +169,7 @@ def jacobi_parallel(nx, ny, max_iter, tolerance):
                     max_diff_local = diff
         
         max_diff_global = cart_comm.allreduce(max_diff_local, op=MPI.MAX)
-        
+        print(f"it={iteration+1} - erro máximo = {max_diff_global}")
         if max_diff_global < tolerance:
             if rank == 0:
                 print(f"Convergência atingida na iteração {iteration + 1}")
@@ -177,7 +180,7 @@ def jacobi_parallel(nx, ny, max_iter, tolerance):
                 print(f"Limite de iterações atingido: {iteration + 1}")
                 print(f"Erro máximo global: {max_diff_global}")
 
-        u_local[1:-1, 1:-1] = u_new_local[1:-1, 1:-1]
+        u_local[1:-1, 1:-1] = u_new_local[1:-1, 1:-1].copy()
     
     local_data = u_local[1:-1, 1:-1].copy()
     
@@ -217,9 +220,9 @@ def jacobi_parallel(nx, ny, max_iter, tolerance):
         recv_buffer = np.empty(np.sum(counts), dtype=np.float64)
     else:
         global_u = None
-        counts = None
+        counts   = None
         displacements = None
-        recv_buffer = None
+        recv_buffer   = None
     
     cart_comm.Gatherv(local_data.flatten(), [recv_buffer, counts, displacements, MPI.DOUBLE], root=0)
     
@@ -259,10 +262,11 @@ def run_scaling_analysis():
     rank = comm.Get_rank()
     size = comm.Get_size()
     
-    num_runs = 5
-    max_iter = 4000
-    tolerance = 1e-8
-    
+    num_runs  = 5
+    max_iter  = 100
+    tolerance = 1e-6
+    n_var     = 20
+
     if rank == 0:
         print(f"=== ANÁLISE MÉTODO DE JACOBI ===")
         print(f"Processos: {size}")
@@ -274,7 +278,7 @@ def run_scaling_analysis():
     if rank == 0:
         print("=== STRONG SCALING ===")
     
-    strong_nx, strong_ny = 400, 400
+    strong_nx, strong_ny = n_var, n_var
     
     if rank == 0:
         print(f"Quantidade de incógnitas: {strong_nx}x{strong_ny}")
@@ -314,7 +318,7 @@ def run_scaling_analysis():
     if rank == 0:
         print("=== WEAK SCALING ===")
     
-    base_nx, base_ny = 400,400
+    base_nx, base_ny = n_var, n_var
     weak_nx, weak_ny = base_nx * int(np.sqrt(size)), base_ny * int(np.sqrt(size))
     
     if rank == 0:
